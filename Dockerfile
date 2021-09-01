@@ -1,0 +1,50 @@
+
+FROM golang:1.16.6-alpine as builder
+
+ENV CGO_ENABLED=0
+
+RUN apk update \
+    && apk add --no-cache --purge git
+
+WORKDIR ${GOPATH}/src/github.com/molon/pbgen
+COPY go.mod .
+COPY go.sum .
+COPY tools.go .
+RUN go mod vendor
+
+# Copy to /go/src so the protos will be available
+RUN cp -r vendor/* ${GOPATH}/src/
+
+# Build protoc tools
+RUN go install github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
+RUN go install github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger
+RUN go install github.com/golang/protobuf/protoc-gen-go
+
+RUN cd ${GOPATH}/src/github.com && mkdir -p googleapis/googleapis && cd googleapis/googleapis && \
+  git init && git remote add origin https://github.com/googleapis/googleapis && git fetch && \
+  git checkout origin/master -- *.proto
+
+RUN mkdir -p /out/usr/bin
+
+RUN rm -rf vendor/* ${GOPATH}/pkg/* \
+    && install -c ${GOPATH}/bin/protoc-gen* /out/usr/bin/
+
+RUN mkdir -p /out/protos && \
+    find ${GOPATH}/src -name "*.proto" -exec cp --parents {} /out/protos \;
+
+FROM alpine:3.14.0
+RUN apk add --no-cache libstdc++ protobuf-dev
+COPY --from=builder /out/usr /usr
+COPY --from=builder /out/protos /
+
+WORKDIR /go/src
+
+# protoc as an entry point for all plugins with import paths set
+ENTRYPOINT ["protoc", "-I.", \
+    # required import paths for protoc-gen-grpc-gateway plugin
+    # "-Igithub.com/grpc-ecosystem/grpc-gateway/third_party/googleapis", \
+    # required import paths for protoc-gen-swagger plugin
+    "-Igithub.com/grpc-ecosystem/grpc-gateway", "-Igithub.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger/options", \
+    # googleapis proto files
+    "-Igithub.com/googleapis/googleapis" \
+]
