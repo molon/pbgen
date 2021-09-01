@@ -7,9 +7,9 @@ RUN apk update \
     && apk add --no-cache --purge git
 
 WORKDIR ${GOPATH}/src/github.com/molon/pbgen
-COPY go.mod .
-COPY go.sum .
-COPY tools.go .
+COPY v1/go.mod .
+COPY v1/go.sum .
+COPY v1/tools.go .
 RUN go mod vendor
 
 # Copy to /go/src so the protos will be available

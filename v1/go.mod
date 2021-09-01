@@ -1,4 +1,4 @@
-module github.com/molon/pbgen
+module github.com/molon/pbgen/v1
 
 go 1.16
 
